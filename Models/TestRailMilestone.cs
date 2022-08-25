@@ -1,0 +1,16 @@
+﻿
+
+using System.Collections.Generic;
+
+namespace SharedProject.Models
+{
+    public class TestRailMilestone
+    {
+        public string name { get; set; }
+        public string description { get; set; }
+        public long due_on { get; set; }
+        public long parent_id { get; set; }
+        public long start_on { get; set; }
+
+    }
+}
