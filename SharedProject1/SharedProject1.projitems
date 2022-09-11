@@ -12,8 +12,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)AppConfig.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Command.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\APIClient.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Color.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DictionaryExx.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DateTime.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Dictionary.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DictionaryEx.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Directory.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Drive.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)File.cs" />
