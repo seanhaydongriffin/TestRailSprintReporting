@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json.Linq;
 using SharedProject;
+using SharedProject.Confluence;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -13,11 +14,9 @@ namespace TestRailSprintReporting
     class Program
     {
         private static SharedProject.TestRail.APIClient TestRailClient = null;
-        private static XNamespace ac = "http://someuri";
 
         static void Main(string[] args)
         {
-
             Log.Initialise(System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location) + "\\TestRailSprintReporting.log");
             Log.Initialise(null);
             AppConfig.Open();
@@ -39,7 +38,8 @@ namespace TestRailSprintReporting
             ConfluenceClient.User = AppConfig.Get("ConfluenceUser");
             ConfluenceClient.Password = AppConfig.Get("ConfluenceApiToken");
 
-            // var debug = (JObject)ConfluenceClient.SendGet(AppConfig.Get("ConfluencePageKey") + "?expand=body.storage");
+//            var debug = (JObject)ConfluenceClient.SendGet(AppConfig.Get("ConfluencePageKey") + "?expand=body.storage");
+            //var debug = (JObject)ConfluenceClient.SendGet("2196242885?expand=body.storage");
             //var debug = (JObject)ConfluenceClient.SendGet("2188705921?expand=body.storage");
             //var debug = (JObject)ConfluenceClient.SendGet("997687643/child/page?limit=200");
             //Log.WriteLine(debug.ToString());
@@ -275,91 +275,63 @@ namespace TestRailSprintReporting
                 // Table default sorting
 
                 results_table_view.Sort = "TestPlan, TestProject, TestRun";
-
-                var table = new XElement("table", new XAttribute("data-layout", "full-width"));
-
-                // Table columns and widths
-
-                table.Add(new XElement("colgroup",
-                    new XElement("col", new XAttribute("style", "width:70px;")),
-                    new XElement("col", new XAttribute("style", "width:130px;")),
-                    new XElement("col", new XAttribute("style", "width:130px;")),
-                    new XElement("col", new XAttribute("style", "width:140px;")),
-                    new XElement("col", new XAttribute("style", "width:280px;")),
-                    new XElement("col", new XAttribute("style", "width:40px;")),
-                    new XElement("col", new XAttribute("style", "width:70px;")),
-                    new XElement("col", new XAttribute("style", "width:90px;"))
-                ));
-
-                // Table headings
-
-                table.Add(new XElement("thead", new XElement("tr",
-                    new XElement("th", new XElement("sub", "Client / Proj")),
-                    new XElement("th", new XElement("sub", "Test Type")),
-                    new XElement("th", new XElement("sub", "Test Level - Run")),
-                    new XElement("th", new XElement("sub", "[ID] Test Name")),
-                    new XElement("th", new XElement("sub", "Test Title")),
-                    new XElement("th", new XElement("sub", "Status")),
-                    new XElement("th", new XElement("sub", "Tested On")),
-                    new XElement("th", new XElement("sub", "All Defects"))
-                )));
-
-                var table_body = new XElement("tbody");
                 var latest_regression_test_plan = "";
+                var table_rows = new TableRows();
 
                 foreach (DataRowView row in results_table_view)
                 {
-                    var status = new XElement(ac + "emoticon", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName));
+                    var emoji_name = "";
+                    var emoji_shortname = "";
+                    var emoji_id = "";
+                    var emoji_fallback = "";
 
                     if (row["TestStatus"].Equals("Passed"))
 
-                        status.Add(new XAttribute(ac + "name", "tick"));
+                        emoji_name = "tick";
 
                     if (row["TestStatus"].Equals("Failed"))
 
-                        status.Add(new XAttribute(ac + "name", "cross"));
+                        emoji_name = "cross";
 
                     if (row["TestStatus"].Equals("Untested"))
                     {
-                        status.Add(new XAttribute(ac + "name", "flag_off"));
-                        status.Add(new XAttribute(ac + "emoji-shortname", ":flag_off:"));
-                        status.Add(new XAttribute(ac + "emoji-id", "atlassian-flag_off"));
-                        status.Add(new XAttribute(ac + "emoji-fallback", ":flag_off:"));
+                        emoji_name = "flag_off";
+                        emoji_shortname = ":flag_off:";
+                        emoji_id = "atlassian-flag_off";
+                        emoji_fallback = ":flag_off:";
                     }
 
-                    var table_row = new XElement("tr",
-                        new XElement("td", new XElement("sub", row["TestProject"])),
-                        new XElement("td", new XElement("sub", row["TestPlan"])),
-                        new XElement("td", new XElement("sub", row["TestRun"])),
-                        new XElement("td", new XElement("sub", "[C" + row["TestAutoID"] + "] " + row["TestAutoName"])),
-                        new XElement("td", new XElement("sub", row["TestTitle"])),
-                        new XElement("td", new XElement("sub", status)),
-                        new XElement("td", new XElement("sub", row["TestTestedOn"])),
-                        new XElement("td", new XElement("sub", row["TestAllDefects"]))
-                    );
+                    var status = new Emoticon(emoji_name, emoji_shortname, emoji_id, emoji_fallback);
 
-                    table_body.Add(table_row);
+                    table_rows.Add(
+                        row["TestProject"],
+                        row["TestPlan"],
+                        row["TestRun"],
+                        "[C" + row["TestAutoID"] + "] " + row["TestAutoName"],
+                        row["TestTitle"],
+                        status.GetXElement(),
+                        row["TestTestedOn"],
+                        row["TestAllDefects"]
+                    );
 
                     if (row["TestPlan"].ToString().StartsWith("Regression"))
 
                         latest_regression_test_plan = row["TestPlan"].ToString();
                 }
 
-                table.Add(table_body);
+                var table = new Table("full-width").Add(
+                    new TableColumnGroup(70, 130, 130, 140, 280, 40, 70, 90)).Add(
+                    new TableHead("Client / Proj", "Test Type", "Test Level - Run", "[ID] Test Name", "Test Title", "Status", "Tested On", "All Defects")).Add(
+                    new TableBody(table_rows));
 
-                var confluence_page_storage_str = table.ToString(SaveOptions.DisableFormatting);
+                var confluence_page_storage_str = table.ToStringDisableFormatting();
 
 
 
                 // Prepend burndown chart
 
-                var burndown_chart_tbody = new XElement("tbody");
-
-                burndown_chart_tbody.Add(new XElement("tr",
-                    new XElement("th", new XElement("p", "Date")),
-                    new XElement("th", new XElement("p", "Untested")),
-                    new XElement("th", new XElement("p", "Failed"))
-                ));
+                var burndown_chart_table_rows = new TableRows().AddHeader("Date", "Untested", "Failed");
+                int? max_not_passed = 0;
 
                 for (var day = current_sprint_start; day.Date <= current_sprint_end; day = day.AddDays(1))
                 {
@@ -373,50 +345,43 @@ namespace TestRailSprintReporting
 
                         daily_failed_count.put(latest_regression_test_plan + "~" + day_str, 0);
 
-                    burndown_chart_tbody.Add(new XElement("tr",
-                        new XElement("td", new XElement("p", day_str)),
-                        new XElement("td", new XElement("p", daily_untested_count.get(latest_regression_test_plan + "~" + day_str))),
-                        new XElement("td", new XElement("p", daily_failed_count.get(latest_regression_test_plan + "~" + day_str)))
-                    ));
+                    if (day.Date > System.DateTime.Today)
+                    {
+                        day_str = "(TBC) " + day_str;
+                        daily_untested_count.put(latest_regression_test_plan + "~" + day_str, 0);
+                        daily_failed_count.put(latest_regression_test_plan + "~" + day_str, 0);
+                    }
+
+                    if (max_not_passed < (daily_untested_count.get(latest_regression_test_plan + "~" + day_str) + daily_failed_count.get(latest_regression_test_plan + "~" + day_str)))
+
+                        max_not_passed = daily_untested_count.get(latest_regression_test_plan + "~" + day_str) + daily_failed_count.get(latest_regression_test_plan + "~" + day_str);
+
+                    burndown_chart_table_rows.Add(
+                        day_str,
+                        daily_untested_count.get(latest_regression_test_plan + "~" + day_str).ToString(),
+                        daily_failed_count.get(latest_regression_test_plan + "~" + day_str).ToString()
+                    );
                 }
 
-                var burndown_chart_body = new XElement(ac + "rich-text-body", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                    new XElement("table",
-                        burndown_chart_tbody
-                    )
+                var burndown_chart = new Chart(
+                    new ChartBody(
+                        new TableBody(burndown_chart_table_rows)
+                    ),
+                    latest_regression_test_plan + " Burndown Chart",
+                    "bar",
+                    "true",
+                    500,
+                    300,
+                    "true",
+                    "",
+                    "up45",
+                    "vertical",
+                    Color.NameToHex("lightgray") + "," + Color.NameToHex("red"),
+                    "",
+                    max_not_passed
                 );
 
-                var burndown_chart = new XElement(ac + "structured-macro", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                    new XAttribute(ac + "name", "chart"),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "type"), "area"
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "stacked"), "true"
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "width"), 800
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "height"), 600
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "legend"), "false"
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "categoryLabelPosition"), "up45"
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "dataOrientation"), "vertical"
-                    ),
-                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                        new XAttribute(ac + "name", "colors"), Color.NameToHex("lightgray") + "," + Color.NameToHex("red")
-                    ),
-                    burndown_chart_body
-                );
-
-                confluence_page_storage_str = burndown_chart.ToString(SaveOptions.DisableFormatting) + confluence_page_storage_str;
-
+                confluence_page_storage_str = burndown_chart.ToStringDisableFormatting() + confluence_page_storage_str;
 
 
                 // Prepend pie charts (to top of) confluence page
@@ -424,21 +389,8 @@ namespace TestRailSprintReporting
                 var section_width = "default";      // back to center
                 //var section_width = "wide";      // go wide
                 //var section_width = "full-width"; // go full wide
-                var chart_size = 200;
-
-                var pie_chart_section = new XElement(ac + "structured-macro", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                    new XAttribute(ac + "name", "section"),
-                    new XAttribute(ac + "align", "center"),
-                    new XAttribute("data-layout", section_width)
-                );
-
-                pie_chart_section.Add(new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                    new XAttribute(ac + "name", "border"),
-                    "true"
-                ));
-
-                var chart_section_rich_text = new XElement(ac + "rich-text-body", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName));
                 var testrail_plan_type_status_processed = new Dictionary<string, bool?>();
+                var pie_chart_columns = new SectionColumns();
 
                 foreach (var entry in testrail_plan_type_status_count)
                 {
@@ -448,61 +400,36 @@ namespace TestRailSprintReporting
                     {
                         testrail_plan_type_status_processed.put(key, true);
 
-                        var pie_chart_column = new XElement(ac + "structured-macro", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                            new XAttribute(ac + "name", "column"),
-                            new XAttribute(ac + "align", "center"),
-                            new XElement(ac + "rich-text-body", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                new XElement(ac + "structured-macro", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                    new XAttribute(ac + "name", "chart"),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "subTitle"), key
-                                    ),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "type"), "pie"
-                                    ),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "width"), chart_size
-                                    ),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "height"), chart_size
-                                    ),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "legend"), "false"
-                                    ),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "pieSectionLabel"), "%1%"
-                                    ),
-                                    new XElement(ac + "parameter", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XAttribute(ac + "name", "colors"), Color.NameToHex("seagreen") + "," + Color.NameToHex("red") + "," + Color.NameToHex("lightgray")
-                                    ),
-                                    new XElement(ac + "rich-text-body", new XAttribute(XNamespace.Xmlns + "ac", ac.NamespaceName),
-                                        new XElement("table",
-                                            new XElement("tbody",
-                                                new XElement("tr",
-                                                    new XElement("th", new XElement("p", "Total")),
-                                                    new XElement("th", new XElement("p", "Passed")),
-                                                    new XElement("th", new XElement("p", "Failed")),
-                                                    new XElement("th", new XElement("p", "Untested"))
-                                                ),
-                                                new XElement("tr",
-                                                    new XElement("td", new XElement("p", "Total")),
-                                                    new XElement("td", new XElement("p", testrail_plan_type_status_count.get(key + "-Passed", 0))),
-                                                    new XElement("td", new XElement("p", testrail_plan_type_status_count.get(key + "-Failed", 0))),
-                                                    new XElement("td", new XElement("p", testrail_plan_type_status_count.get(key + "-Untested", 0)))
-                                                )
-                                            )
-                                        )
+                        pie_chart_columns.Add("center", new Chart(
+                            new ChartBody(
+                                new TableBody(
+                                    new TableRows().AddHeader("Total", "Passed", "Failed", "Untested").Add(
+                                        "Total",
+                                        testrail_plan_type_status_count.get(key + "-Passed", 0).ToString(),
+                                        testrail_plan_type_status_count.get(key + "-Failed", 0).ToString(),
+                                        testrail_plan_type_status_count.get(key + "-Untested", 0).ToString()
                                     )
                                 )
-                            )
-                        );
-
-                        chart_section_rich_text.Add(pie_chart_column);
+                            ),
+                            key,
+                            "pie",
+                            "",
+                            200,
+                            200,
+                            "false",
+                            "",
+                            "",
+                            "",
+                            Color.NameToHex("seagreen") + "," + Color.NameToHex("red") + "," + Color.NameToHex("lightgray"),
+                            "%1%"
+                        ));
                     }
                 }
 
-                pie_chart_section.Add(chart_section_rich_text);
-                confluence_page_storage_str = pie_chart_section.ToString(SaveOptions.DisableFormatting) + confluence_page_storage_str;
+                var pie_chart_section = new Section("center", section_width, "true").Add(pie_chart_columns);
+
+                //                confluence_page_storage_str = "<h5 style=\"text-align: center;\">Status Charts by Test Type</h5>" + pie_chart_section.ToString(SaveOptions.DisableFormatting) + confluence_page_storage_str;
+                confluence_page_storage_str = "<h5 style=\"text-align: center;\">Status Charts by Test Type</h5>" + pie_chart_section.ToStringDisableFormatting() + confluence_page_storage_str;
 
 
 
