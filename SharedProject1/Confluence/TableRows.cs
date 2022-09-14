@@ -54,8 +54,23 @@ namespace SharedProject.Confluence
             var row = new XElement("tr");
 
             foreach (var field in fields)
+            {
+                var tmp_field = field;
 
-                row.Add(new XElement("td", new XElement("sub", field)));
+                if (field.GetType() == typeof(TableCell))
+
+                    tmp_field = ((TableCell)field).GetList();
+
+                if (field.GetType() == typeof(Emoticon))
+
+                    tmp_field = ((Emoticon)field).GetXElement();
+
+                if (field.GetType() == typeof(Hyperlink))
+
+                    tmp_field = ((Hyperlink)field).GetXElement();
+
+                row.Add(new XElement("td", new XElement("sub", tmp_field)));
+            }
 
             _TableRows.Add(row);
             return this;
