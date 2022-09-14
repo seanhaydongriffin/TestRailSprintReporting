@@ -4,11 +4,8 @@ using SharedProject.Confluence;
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.IO;
 using System.Linq;
-using System.Net;
 using System.Reflection;
-using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -16,26 +13,17 @@ namespace TestRailSprintReporting
 {
     class Program
     {
-        private static SharedProject.TestRail.APIClient TestRailAPIClient = null;
-        private static SharedProject.TestRail.WebClient TestRailWebClient = null;
-        private const string ISO8601WithZuluDateTimeFormat = "yyyy-MM-ddTHH:mm:ssZ";
+        private static SharedProject.TestRail.APIClient TestRailClient = null;
 
         static void Main(string[] args)
         {
             Log.Initialise(System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location) + "\\TestRailSprintReporting.log");
             Log.Initialise(null);
             AppConfig.Open();
-
-            TestRailAPIClient = new SharedProject.TestRail.APIClient(AppConfig.Get("TestRailUrl"));
-            TestRailAPIClient.User = AppConfig.Get("TestRailUser");
-            TestRailAPIClient.Password = AppConfig.Get("TestRailPassword");
-
-            TestRailWebClient = new SharedProject.TestRail.WebClient(AppConfig.Get("TestRailUrl"));
-            TestRailWebClient.User = AppConfig.Get("TestRailUser");
-            TestRailWebClient.Password = AppConfig.Get("TestRailPassword");
             
-            Log.WriteLine("TestRail login ...");
-            TestRailWebClient.Login();
+            TestRailClient = new SharedProject.TestRail.APIClient(AppConfig.Get("TestRailUrl"));
+            TestRailClient.User = AppConfig.Get("TestRailUser");
+            TestRailClient.Password = AppConfig.Get("TestRailPassword");
 
             var today = System.DateTime.Today;
             var unixTimestamp = (int)today.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds;
@@ -44,7 +32,7 @@ namespace TestRailSprintReporting
 
             // test statuses
 
-            //var test_statuses = (JArray)TestRailAPIClient.SendGet("get_statuses");
+            //var test_statuses = (JArray)TestRailClient.SendGet("get_statuses");
 
             SharedProject.Confluence.APIClient ConfluenceClient = new SharedProject.Confluence.APIClient(AppConfig.Get("ConfluenceUrl"));
             ConfluenceClient.User = AppConfig.Get("ConfluenceUser");
@@ -57,7 +45,6 @@ namespace TestRailSprintReporting
             //Log.WriteLine(debug.ToString());
 
             var current_quarter = SharedProject.DateTime.GetNowQuarterInfo();
-            var current_sprint_milestone_id = "";
             var current_sprint_name = "";
             System.DateTime current_sprint_start = new System.DateTime();
             System.DateTime current_sprint_end = new System.DateTime();
@@ -96,7 +83,7 @@ namespace TestRailSprintReporting
                 // The quarter milestone
 
                 Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " \"" + TestProjectName + "\" getting the milestones ...");
-                var milestones = (JObject)TestRailAPIClient.SendGet("get_milestones/" + TestProjectId);
+                var milestones = (JObject)TestRailClient.SendGet("get_milestones/" + TestProjectId);
                 var quarter_milestone = milestones.SelectToken("$..[?(@.name =~ /^FY" + current_quarter.ShortYear + "Q" + current_quarter.Quarter + " .*$/)]");
 
                 if (quarter_milestone == null)
@@ -115,99 +102,101 @@ namespace TestRailSprintReporting
                 current_sprint_name = sprint_milestone["name"].ToString().Split(' ').FirstOrDefault();
                 current_sprint_start = SharedProject.DateTime.UnixTimeStampToUTCDateTime(Convert.ToDouble(sprint_milestone["start_on"]));
                 current_sprint_end = SharedProject.DateTime.UnixTimeStampToUTCDateTime(Convert.ToDouble(sprint_milestone["due_on"]));
-                current_sprint_milestone_id = sprint_milestone["id"].ToString();
 
-                Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " Milestone \"" + sprint_milestone["name"] + "\" getting the artifacts ...");
+                // The plans
 
-                var xml = TestRailWebClient.SendGet("milestones/export/" + current_sprint_milestone_id);
+                Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " Milestone \"" + sprint_milestone["name"] + "\" getting the plans ...");
 
-                //SharedProject.File.overwrite("C:\\dwn\\fred.xml", xml);
-                //var xml = SharedProject.File.read("C:\\dwn\\fred.xml");
+                var plans = (JObject)TestRailClient.SendGet("get_plans/" + TestProjectId + "&milestone_id=" + sprint_milestone["id"]);
 
-                var plans = Xml.GetChildNodes(xml, "milestone/runs/plan");
-
-                foreach (XmlNode plan in plans)
+                foreach (var plan in plans["plans"])
                 {
-                    var plan_id = plan.GetChildNode("id").InnerText;
-                    var plan_name = plan.GetChildNode("name").InnerText.Replace(current_sprint_name, "").Trim();
-                    var runs = plan.GetChildNodes("runs/run");
 
-                    foreach (XmlNode run in runs)
+                    // The runs
+
+                    Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " Plan \"" + plan["name"] + "\" getting the details ...");
+                    plan["name"] = plan["name"].ToString().Replace(current_sprint_name, "").Trim();
+
+                    var plan_detail = (JObject)TestRailClient.SendGet("get_plan/" + plan["id"]);
+
+                    foreach (var entry in plan_detail["entries"])
                     {
-                        var run_name = run.GetChildNode("name").InnerText;
-                        var tests = run.GetChildNodes("sections/section/tests/test");
-
-                        foreach (XmlNode test in tests)
+                        foreach (var run in entry["runs"])
                         {
-                            var testcaseid = test.GetChildNode("caseid").InnerText;
-                            var testtitle = test.GetChildNode("title").InnerText;
-                            var teststatus = test.GetChildNode("status").InnerText;
-                            var testcustom = test.GetChildNode("custom");
-                            var auto_script_ref = testcustom.GetChildNode("auto_script_ref").InnerText;
+                            // The tests & results
+
+                            Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " Run \"" + run["name"] + " (" + run["config"] + ")\" getting the tests ...");
+
+                            var tests = (JObject)TestRailClient.SendGet("get_tests/" + run["id"]);
+
+                            Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " Run \"" + run["name"] + " (" + run["config"] + ")\" getting the results ...");
+
+                            var results = (JObject)TestRailClient.SendGet("get_results_for_run/" + run["id"]);
                             var tested_on = "";
                             var all_defects = "";
-                            var test_date_outcome = new Dictionary<string, string>();
 
-                            var testchanges = test.GetChildNodes("changes/change");
-
-                            foreach (XmlNode testchange in testchanges)
+                            foreach (var test in tests["tests"])
                             {
-                                var created_on = testchange.GetChildNode("createdon").InnerText;
-                                System.DateTime created_on_datetime = System.DateTime.ParseExact(created_on, ISO8601WithZuluDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
-
-                                if (tested_on.Equals(""))
+                                try
                                 {
-                                    tested_on = created_on_datetime.ToString("dd MMM HH:mm");
-                                }
+                                    var test_results = results.SelectTokens("$.results[?(@.test_id == " + (long)test["id"] + ")]");
+                                    var test_date_outcome = new Dictionary<string, string>();
 
-                                var status = test.GetChildNode("status").InnerText;
-                                var defects = testchange.GetChildNode("defects").InnerText;
-
-                                if (defects.Length > 0)
-                                {
-                                    if (all_defects.Length > 0)
-
-                                        all_defects += ", ";
-
-                                    all_defects += defects;
-                                }
-
+                                    foreach (var test_result in test_results)
+                                    {
 //                                        var result_created_on = SharedProject.DateTime.UnixTimeStampToDateTime(Convert.ToDouble(test_result["created_on"])).ToString("ddd, dd/MM");
-                                var result_created_on = created_on_datetime.ToString("ddd, dd/MM");
+                                        var result_created_on = SharedProject.DateTime.UnixTimeStampToDateTime(Convert.ToDouble(test_result["created_on"])).ToString("ddd, dd/MM");
 
-                                if (!test_date_outcome.ContainsKey(result_created_on))
+                                        if (!test_date_outcome.ContainsKey(result_created_on))
 
-                                    test_date_outcome.put(result_created_on, status);
+                                            test_date_outcome.put(result_created_on, AppConfig.Get("TestRailTestStatus" + test_result["status_id"]));
+                                    }
+
+                                    // Examine every day of the sprint for the test and increment the daily totals accordingly
+
+                                    var prev_day_result = "Untested";
+
+                                    for (var day = current_sprint_start; day.Date <= current_sprint_end; day = day.AddDays(1))
+                                    {
+                                        var day_str = day.ToString("ddd, dd/MM");
+
+                                        if (!test_date_outcome.ContainsKey(day_str))
+
+                                            test_date_outcome.put(day_str, prev_day_result);
+
+                                        if (test_date_outcome.get(day_str).Equals("Untested"))
+                                        
+                                            daily_untested_count.Increment(plan["name"] + "~" + day_str);
+
+                                        if (test_date_outcome.get(day_str).Equals("Failed"))
+                                            
+                                            daily_failed_count.Increment(plan["name"] + "~" + day_str);
+
+                                        prev_day_result = test_date_outcome.get(day_str);
+                                    }
+
+
+                                    var latest_test_result = test_results.First();
+                                    var created_on = SharedProject.DateTime.UnixTimeStampToDateTime((double)latest_test_result["created_on"]);
+                                    tested_on = created_on.ToString("dd MMM HH:mm");
+                                    all_defects = latest_test_result["defects"].ToString();
+                                }
+                                catch (Exception e)
+                                {
+                                }
+
+                                //confluence_page_storage.Add(TestProjectConfluenceRootKey, "<tr><td><sub>" + test["custom_auto_script_ref"] + " (<a href=\"" + AppConfig.Get("TestRailUrl") + "/index.php?/cases/view/" + test["case_id"] + "\">C" + test["case_id"] + "</a>)</sub><ac:structured-macro ac:name=\"anchor\"><ac:parameter ac:name=\"\">C" + test["case_id"] + "</ac:parameter></ac:structured-macro></td><td><sub>" + Regex.Replace(Regex.Replace(test["title"].ToString().UrlEncode(5), "VARIANT on (\\w+)", "VARIANT on <a href=\"#$1\">$1</a>"), "DEPENDANT on (\\w+)", "DEPENDANT on <a href=\"#$1\">$1</a>") + "</sub></td><td><sub>" + status_emoticon + "<a href=\"" + AppConfig.Get("TestRailUrl") + "/index.php?/tests/view/" + test["id"] + "\">" + AppConfig.Get("TestRailTestStatus" + test["status_id"]) + "</a></sub></td><td><sub>" + tested_on + "</sub></td><td><sub>" + all_defects + "</sub></td></tr>");
+
+//                                confluence_page_table[TestProjectConfluenceRootKey].Rows.Add(TestProjectName.ToString().Replace(" Assessment", "").Trim(), plan["name"].ToString().Replace(current_sprint_name, "").Trim(), run["name"].ToString().Replace(" Functional", "").Replace(" Regression", "").Trim(), test["case_id"], test["custom_auto_script_ref"], test["title"], AppConfig.Get("TestRailTestStatus" + test["status_id"]), tested_on, all_defects);
+                                confluence_page_table[TestProjectConfluenceRootKey].Rows.Add(TestProjectName.ToString().Replace(" Assessment", "").Trim(), plan["name"], run["name"].ToString().Replace(" Functional", "").Replace(" Regression", "").Trim(), test["case_id"], test["custom_auto_script_ref"], test["title"], AppConfig.Get("TestRailTestStatus" + test["status_id"]), tested_on, all_defects);
+
+
+
+
+                                // Tally the test results for later pie charting
+
+                                testrail_plan_type_status_count.Increment(plan["name"].ToString().Replace(current_sprint_name, "").Trim() + "-" + AppConfig.Get("TestRailTestStatus" + test["status_id"]));
                             }
-
-                            // Examine every day of the sprint for the test and increment the daily totals accordingly
-
-                            var prev_day_result = "Untested";
-
-                            for (var day = current_sprint_start; day.Date <= current_sprint_end; day = day.AddDays(1))
-                            {
-                                var day_str = day.ToString("ddd, dd/MM");
-
-                                if (!test_date_outcome.ContainsKey(day_str))
-
-                                    test_date_outcome.put(day_str, prev_day_result);
-
-                                if (test_date_outcome.get(day_str).Equals("Untested"))
-
-                                    daily_untested_count.Increment(plan_name + "~" + day_str);
-
-                                if (test_date_outcome.get(day_str).Equals("Failed"))
-
-                                    daily_failed_count.Increment(plan_name + "~" + day_str);
-
-                                prev_day_result = test_date_outcome.get(day_str);
-                            }
-
-                            confluence_page_table[TestProjectConfluenceRootKey].Rows.Add(TestProjectName.ToString().Replace(" Assessment", "").Trim(), plan_name, run_name.ToString().Replace(" Functional", "").Replace(" Regression", "").Trim(), testcaseid.Replace("C", "").ToInt(), auto_script_ref, testtitle, teststatus, tested_on, all_defects);
-
-                            // Tally the test results for later pie charting
-
-                            testrail_plan_type_status_count.Increment(plan_name.Replace(current_sprint_name, "").Trim() + "-" + teststatus);
                         }
                     }
                 }
