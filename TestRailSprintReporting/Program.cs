@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -63,6 +64,9 @@ namespace TestRailSprintReporting
             System.DateTime current_sprint_end = new System.DateTime();
             var confluence_page_table = new Dictionary<string, DataTable>();
             var testrail_plan_type_status_count = new Dictionary<string, int?>();
+            var testrail_project_id = new Dictionary<string, string>();
+            var testrail_plan_id = new Dictionary<string, string>();
+            var testrail_run_id = new Dictionary<string, string>();
 
             var daily_untested_count = new Dictionary<string, int?>();
             var daily_failed_count = new Dictionary<string, int?>();
@@ -76,6 +80,7 @@ namespace TestRailSprintReporting
                 project_num++;
                 var TestProjectName = TestProject.GetAttributeValue("Name");
                 var TestProjectId = TestProject.GetAttributeValue("Id");
+                testrail_project_id.put(TestProjectName.ToString().Replace(" Assessment", "").Trim(), TestProjectId);
                 var TestProjectConfluenceRootKey = TestProject.GetAttributeValue("ConfluenceSpace") + "-" + TestProject.GetAttributeValue("ConfluencePage") + "-" + TestProject.GetAttributeValue("Team");
 
                 if (!confluence_page_table.ContainsKey(TestProjectConfluenceRootKey))
@@ -130,11 +135,14 @@ namespace TestRailSprintReporting
                 {
                     var plan_id = plan.GetChildNode("id").InnerText;
                     var plan_name = plan.GetChildNode("name").InnerText.Replace(current_sprint_name, "").Trim();
+                    testrail_plan_id.put(plan_name, plan_id.Replace("R", ""));
                     var runs = plan.GetChildNodes("runs/run");
 
                     foreach (XmlNode run in runs)
                     {
+                        var run_id = run.GetChildNode("id").InnerText;
                         var run_name = run.GetChildNode("name").InnerText;
+                        testrail_run_id.put(run_name.ToString().Replace(" Functional", "").Replace(" Regression", "").Trim(), run_id.Replace("R", ""));
                         var tests = run.GetChildNodes("sections/section/tests/test");
 
                         foreach (XmlNode test in tests)
@@ -314,15 +322,58 @@ namespace TestRailSprintReporting
 
                     var status = new Emoticon(emoji_name, emoji_shortname, emoji_id, emoji_fallback);
 
+                    var all_defects_cell = new TableCell();
+
+                    foreach (var defect in row["TestAllDefects"].ToString().Split(','))
+                    {
+                        if (all_defects_cell.GetCount() > 0)
+
+                            all_defects_cell.Add(", ");
+
+                        all_defects_cell.Add(new Hyperlink(AppConfig.Get("ConfluenceUrl") + "/browse/" + defect.Trim(), defect.Trim()));
+                    }
+
+                    var title = new TableCell();
+
+                    var variant_on_matches = Regex.Matches(row["TestTitle"].ToString().UrlEncode(5), "VARIANT on (\\w+)");
+                    var dependant_on_matches = Regex.Matches(row["TestTitle"].ToString().UrlEncode(5), "DEPENDANT on (\\w+)");
+
+                    if (variant_on_matches.Count == 0 && dependant_on_matches.Count == 0)
+
+                        title.Add(row["TestTitle"].ToString().UrlEncode(5));
+
+                    foreach (Match match in variant_on_matches)
+                    {
+                        var title_part = row["TestTitle"].ToString().UrlEncode(5).Split(new string[] { match.Value }, StringSplitOptions.None);
+                        title.Add(title_part[0]);
+                        title.Add("VARIANT on ");
+                        title.Add(new Hyperlink("#" + match.Value.Replace("VARIANT on ", ""), match.Value.Replace("VARIANT on ", "")));
+                        title.Add(title_part[1]);
+                    }
+
+                    foreach (Match match in dependant_on_matches)
+                    {
+                        var title_part = row["TestTitle"].ToString().UrlEncode(5).Split(new string[] { match.Value }, StringSplitOptions.None);
+                        title.Add(title_part[0]);
+                        title.Add("DEPENDANT on ");
+                        title.Add(new Hyperlink("#" + match.Value.Replace("DEPENDANT on ", ""), match.Value.Replace("DEPENDANT on ", "")));
+                        title.Add(title_part[1]);
+                    }
+
                     table_rows.Add(
-                        row["TestProject"],
-                        row["TestPlan"],
-                        row["TestRun"],
-                        "[C" + row["TestAutoID"] + "] " + row["TestAutoName"],
-                        row["TestTitle"],
-                        status.GetXElement(),
+                        new Hyperlink(AppConfig.Get("TestRailUrl") + "/index.php?/projects/overview/" + testrail_project_id.get(row["TestProject"].ToString()), row["TestProject"].ToString()),
+                        new Hyperlink(AppConfig.Get("TestRailUrl") + "/index.php?/plans/view/" + testrail_plan_id.get(row["TestPlan"].ToString()), row["TestPlan"].ToString()),
+                        new Hyperlink(AppConfig.Get("TestRailUrl") + "/index.php?/runs/view/" + testrail_run_id.get(row["TestRun"].ToString()), row["TestRun"].ToString()),
+                        new TableCell(
+                            new Anchor("C" + row["TestAutoID"]),
+                            "[",
+                            new Hyperlink(AppConfig.Get("TestRailUrl") + "/index.php?/cases/view/" + row["TestAutoID"], "C" + row["TestAutoID"]),
+                            "] " + row["TestAutoName"]
+                        ),
+                        title,
+                        status,
                         row["TestTestedOn"],
-                        row["TestAllDefects"]
+                        all_defects_cell
                     );
 
                     if (row["TestPlan"].ToString().StartsWith("Regression"))
@@ -331,7 +382,7 @@ namespace TestRailSprintReporting
                 }
 
                 var table = new Table("full-width").Add(
-                    new TableColumnGroup(70, 130, 130, 140, 280, 40, 70, 90)).Add(
+                    new TableColumnGroup(70, 130, 130, 150, 280, 40, 70, 80)).Add(
                     new TableHead("Client / Proj", "Test Type", "Test Level - Run", "[ID] Test Name", "Test Title", "Status", "Tested On", "All Defects")).Add(
                     new TableBody(table_rows));
 
