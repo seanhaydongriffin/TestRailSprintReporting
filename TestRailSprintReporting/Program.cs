@@ -4,14 +4,10 @@ using SharedProject.Confluence;
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.IO;
 using System.Linq;
-using System.Net;
 using System.Reflection;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
-using System.Xml.Linq;
 
 namespace TestRailSprintReporting
 {
@@ -51,14 +47,14 @@ namespace TestRailSprintReporting
             ConfluenceClient.User = AppConfig.Get("ConfluenceUser");
             ConfluenceClient.Password = AppConfig.Get("ConfluenceApiToken");
 
-//            var debug = (JObject)ConfluenceClient.SendGet(AppConfig.Get("ConfluencePageKey") + "?expand=body.storage");
+            //            var debug = (JObject)ConfluenceClient.SendGet(AppConfig.Get("ConfluencePageKey") + "?expand=body.storage");
             //var debug = (JObject)ConfluenceClient.SendGet("2196242885?expand=body.storage");
             //var debug = (JObject)ConfluenceClient.SendGet("2188705921?expand=body.storage");
             //var debug = (JObject)ConfluenceClient.SendGet("997687643/child/page?limit=200");
             //Log.WriteLine(debug.ToString());
 
-            var current_quarter = SharedProject.DateTime.GetNowQuarterInfo();
-            var current_sprint_milestone_id = "";
+            var want_to_know_more = (new CustomPanel(":thinking:", "1f914", "#DEEBFF", "Want to know more? ", "Click here for regression test suite details", "https://janisoncls.atlassian.net/wiki/display/JAST/QA+Assessment+Regression+Test+Suites")).ToStringDisableFormatting();
+
             var current_sprint_name = "";
             System.DateTime current_sprint_start = new System.DateTime();
             System.DateTime current_sprint_end = new System.DateTime();
@@ -102,7 +98,19 @@ namespace TestRailSprintReporting
 
                 Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " \"" + TestProjectName + "\" getting the milestones ...");
                 var milestones = (JObject)TestRailAPIClient.SendGet("get_milestones/" + TestProjectId);
-                var quarter_milestone = milestones.SelectToken("$..[?(@.name =~ /^FY" + current_quarter.ShortYear + "Q" + current_quarter.Quarter + " .*$/)]");
+
+                JToken quarter_milestone = null;
+
+                // Look for a quarter milestone that is active
+
+                //var debug = milestones.SelectTokens("$..[?(@.parent_id == null && @.started_on <= " + (System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds + 3600) + " && @.due_on >= " + System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds + ")]");
+                quarter_milestone = milestones.SelectToken("$..[?(@.parent_id == null && @.started_on <= " + (System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds + 3600) + " && @.due_on >= " + System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds + ")]");
+
+                if (quarter_milestone == null)
+
+                    // Look for a quarter milestone that is not active
+
+                    quarter_milestone = milestones.SelectToken("$..[?(@.parent_id == null && @.start_on <= " + unixTimestamp + " && @.due_on >= " + unixTimestamp + ")]");
 
                 if (quarter_milestone == null)
 
@@ -111,16 +119,33 @@ namespace TestRailSprintReporting
                 // the sprint milestone
 
                 var sprint_milestones = quarter_milestone["milestones"];
-                var sprint_milestone = sprint_milestones.SelectToken("$..[?(@.start_on <= " + unixTimestamp + " && @.due_on >= " + unixTimestamp + ")]");
-                        
+                JToken sprint_milestone = null;
+
+                // Look for a sprint milestone that is active
+
+                sprint_milestone = sprint_milestones.SelectToken("$..[?(@.parent_id != null && @.started_on <= " + (System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds + 3600) + " && @.due_on >= " + System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1)).TotalSeconds + ")]");
+
+                if (sprint_milestone == null)
+
+                    // Look for a sprint milestone that is not active
+
+                    sprint_milestone = sprint_milestones.SelectToken("$..[?(@.parent_id != null && @.start_on <= " + unixTimestamp + " && @.due_on >= " + unixTimestamp + ")]");
+
                 if (sprint_milestone == null)
 
                     Environment.Exit(0);
 
                 current_sprint_name = sprint_milestone["name"].ToString().Split(' ').FirstOrDefault();
-                current_sprint_start = SharedProject.DateTime.UnixTimeStampToUTCDateTime(Convert.ToDouble(sprint_milestone["start_on"]));
+
+                if (sprint_milestone["started_on"] != null)
+
+                    current_sprint_start = SharedProject.DateTime.UnixTimeStampToUTCDateTime(Convert.ToDouble(sprint_milestone["started_on"]));
+                else
+
+                    current_sprint_start = SharedProject.DateTime.UnixTimeStampToUTCDateTime(Convert.ToDouble(sprint_milestone["start_on"]));
+
                 current_sprint_end = SharedProject.DateTime.UnixTimeStampToUTCDateTime(Convert.ToDouble(sprint_milestone["due_on"]));
-                current_sprint_milestone_id = sprint_milestone["id"].ToString();
+                var current_sprint_milestone_id = sprint_milestone["id"].ToString();
 
                 Log.WriteLine("Prj " + project_num + " of " + AppConfig.GetSectionGroup("TestProjects").GetSectionGroups().Count + " Milestone \"" + sprint_milestone["name"] + "\" getting the artifacts ...");
 
@@ -180,7 +205,6 @@ namespace TestRailSprintReporting
                                     all_defects += defects;
                                 }
 
-//                                        var result_created_on = SharedProject.DateTime.UnixTimeStampToDateTime(Convert.ToDouble(test_result["created_on"])).ToString("ddd, dd/MM");
                                 var result_created_on = created_on_datetime.ToString("ddd, dd/MM");
 
                                 if (!test_date_outcome.ContainsKey(result_created_on))
@@ -443,6 +467,7 @@ namespace TestRailSprintReporting
                     max_not_passed
                 );
 
+
                 confluence_page_storage_str = burndown_chart.ToStringDisableFormatting() + confluence_page_storage_str;
 
 
@@ -491,7 +516,7 @@ namespace TestRailSprintReporting
                 var pie_chart_section = new Section("center", section_width, "true").Add(pie_chart_columns);
 
                 //                confluence_page_storage_str = "<h5 style=\"text-align: center;\">Status Charts by Test Type</h5>" + pie_chart_section.ToString(SaveOptions.DisableFormatting) + confluence_page_storage_str;
-                confluence_page_storage_str = "<h5 style=\"text-align: center;\">Status Charts by Test Type</h5>" + pie_chart_section.ToStringDisableFormatting() + confluence_page_storage_str;
+                confluence_page_storage_str = want_to_know_more + "<h5 style=\"text-align: center;\">Status Charts by Test Type</h5>" + pie_chart_section.ToStringDisableFormatting() + confluence_page_storage_str;
 
 
 
