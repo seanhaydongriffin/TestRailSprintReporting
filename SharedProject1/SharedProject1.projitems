@@ -13,9 +13,17 @@
     <Compile Include="$(MSBuildThisFileDirectory)Command.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\APIClient.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Color.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Bold.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\Chart.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\ChartBody.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\Anchor.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\CustomPanel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Divider.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Heading1.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Heading2.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\NotePanel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Status.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Strong.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\TableCell.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\SectionColumns.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\Emoticon.cs" />
@@ -23,9 +31,11 @@
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\Table.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\TableColumnGroup.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\TableHead.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\TableRow.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\TableRows.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\TableBody.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Confluence\Section.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Confluence\Toc.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DictionaryExx.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DateTime.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DictionaryEx.cs" />
@@ -54,9 +64,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\TestRailSuite.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)StringCipher.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)StringEx.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)TestRail\WebClient.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestRail\APIClient.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestRail\APIException.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TestRail\WebClient.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Xml.cs" />
   </ItemGroup>
 </Project>
